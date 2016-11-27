@@ -2,6 +2,7 @@
 #include <math.h>
 #include <random>
 #include <cmath>
+#include <vector>
 
 double phi(double x)
 {
@@ -55,18 +56,19 @@ double S0 = 205;
 double K = 210;
 double r = 0.0021;
 
+int const T_max = 5000;
 
-double tab_S0[1000];
-double tab_C[1000];
-double tab_delta[1000];
-double tab_gamma[1000];
+double tab_S0[T_max];
+double tab_C[T_max];
+double tab_delta[T_max];
+double tab_gamma[T_max];
 
-float delta_eval(float S0, float d1, float d2, float K, float r, float T, float eps){
+float delta_eval_talor(float S0, float d1, float d2, float K, float r, float T, float eps){
     float delta = (C(S0 + eps, d1, d2, K, r, T) - C(S0 - eps, d1, d2, K, r, T))/(2*eps);
     return delta;
 }
 
-float gamma_eval(double S0, double d1, double d2, double K, double r, double T, double eps){
+float gamma_eval_taylor(double S0, double d1, double d2, double K, double r, double T, double eps){
     double a1 = C(S0 + eps, d1, d2, K, r, T);
     double a2 = C(S0 - eps, d1, d2, K, r, T);
     double a3 = C(S0, d1, d2, K, r, T);
@@ -77,25 +79,65 @@ float gamma_eval(double S0, double d1, double d2, double K, double r, double T, 
 }
 
 
+
 // array containing the draw of Xi
-double tab_xi[1000];
+double tab_xi[T_max];
 
 void x_eval(double r, double T, double S0, double sigma, double K){
-    for (int i = 0 ; i < 1000 ; i++){
+    for (int i = 0 ; i < T_max ; i++){
         double xi = exp(-r*T)*fmax(0,S0*exp((r-pow(sigma,2)/2)*T + (sigma*sqrt(T)*d(gen)))-K);
         tab_xi[i] = xi;
     }
 }
 
 
-double monte_carlo[1000];
+double monte_carlo[T_max];
 void monte_carlo_eval(){
+    // Evaluate the x_i using monte carlo simulation
+    // Store the simu in monte_carlo array
     monte_carlo[0] = tab_xi[0];
-    for (int i = 1 ; i < 1000 ; i++) {
+    for (int i = 1 ; i < T_max ; i++) {
         monte_carlo[i] = (monte_carlo[i-1]*(i-1) + tab_xi[i])/i;
     }
 }
 
+double d_1 = d1(sigma, T, S0, K, r);
+double d_2 = d2(d_1, sigma, T);
+double C_ = C(S0, d_1, d_2, K, r, T);
+
+
+double calculateSD(vector<double> data)
+{
+    double sum = 0.0, mean, std = 0.0;
+
+    for(int i = 0; i < sizeof(data); ++i)
+    {
+        sum += data[i];
+    }
+
+    mean = sum/sizeof(data);
+    for(int i = 0; i < sizeof(data); ++i)
+        std += pow(data[i] - mean, 2);
+
+    return sqrt(std / sizeof(data));
+}
+
+double monte_carlo_normalite[T_max];
+void fill_monte_carlo_normalite(){
+    monte_carlo_normalite[0] = monte_carlo[0];
+    vector<double> sub_tab_xi;
+    for (int i = 1 ; i < T_max ; i++) {
+        sub_tab_xi.push_back(tab_xi[i]);
+        double std = calculateSD(sub_tab_xi);
+        monte_carlo_normalite[i] = (monte_carlo[i] - C_)/(std/sqrt(i));
+    }
+}
+
+
+double gamma_eval(double sigma, double T, double S0, double K, double r){
+    double d1_ = d1(sigma, T, S0, K, r);
+    return exp(-pow(d1_,2))/(sigma*S0*sqrt(2*M_PI*T));
+}
 
 
 void fill_tab(int size){
@@ -106,8 +148,9 @@ void fill_tab(int size){
         double d_1 = d1(sigma, T, tab_S0[i], K, r);
         double d_2 = d2(d_1, sigma, T);
         double C_ = C(tab_S0[i], d_1, d_2, K, r, T);
+
         //float delta = delta_eval(tab_S0[i], d_1, d_2, K, r, T, 0.01);
-        double gamma = gamma_eval(tab_S0[i], d_1, d_2, K, r, T, 0.01);
+        double gamma = gamma_eval(sigma, T, tab_S0[i], K, r);
 
         tab_C[i] = C_;
         //tab_delta[i] = delta;
@@ -118,28 +161,33 @@ void fill_tab(int size){
 
 int main() {
 
-
-
-
-
     cout << d(gen) << endl;
 
     fill_tab(1000);
     cout << tab_C[10] << endl;
 
+    // drawing the xi to fill tab_xi
     x_eval(r, T, S0, sigma, K);
+
     monte_carlo_eval();
+
+    fill_monte_carlo_normalite();
+
+/*    for (int i = 0; i < 1000; i++)
+        cout << monte_carlo_normalite[i] << endl;*/
+
+
+    // we draw 1000 times from monte_carlo_normalite[10]
+    double hist_n_10[1000];
+    for (int j = 0; j < 1000; j++){
+        x_eval(r, T, S0, sigma, K);
+        monte_carlo_eval();
+        fill_monte_carlo_normalite();
+        hist_n_10[j] = monte_carlo_normalite[500];
+    }
     for (int i = 0; i < 1000; i++)
-        cout << monte_carlo[i] << endl;
+        cout << hist_n_10[i] << endl;
 
-    double d_1 = d1(sigma, T, S0, K, r);
-    double d_2 = d2(d_1, sigma, T);
-    double C_ = C(S0, d_1, d_2, K, r, T);
-    cout << C_ << endl;
-    cout << C_ << endl;
     return 0;
-
-
-
 
 }
